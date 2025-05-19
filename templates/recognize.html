@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recognize - Face Recognition System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-12">
+                <h1 class="text-center">Face Recognition</h1>
+                <p class="lead text-center">Identify a person using face recognition</p>
+                <div class="text-center mb-4">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to Home</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="card-title">Camera</h3>
+                        <div class="text-center">
+                            <div id="cameraContainer">
+                                <video id="video" width="400" height="300" autoplay></video>
+                                <canvas id="canvas" width="400" height="300" style="display: none;"></canvas>
+                            </div>
+                            <div id="capturedImageContainer" style="display: none;">
+                                <img id="capturedImage" width="400" height="300">
+                                <button id="retakeBtn" class="btn btn-warning mt-2">Retake</button>
+                            </div>
+                            <div class="mt-3">
+                                <button id="captureBtn" class="btn btn-primary">Capture Face</button>
+                                <button id="recognizeBtn" class="btn btn-success" disabled>Recognize</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="card-title">Recognition Results</h3>
+                        <div id="loadingResults" style="display: none;">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <p class="text-center mt-2">Processing...</p>
+                        </div>
+                        <div id="noResults" class="text-center">
+                            <p>Capture a face to start recognition</p>
+                        </div>
+                        <div id="recognitionResults" style="display: none;">
+                            <div class="alert alert-success">
+                                <h4 class="alert-heading">Person Identified!</h4>
+                                <p><strong>Name:</strong> <span id="recognizedName"></span></p>
+                                <p><strong>Email:</strong> <span id="recognizedEmail"></span></p>
+                                <p><strong>Confidence:</strong> <span id="recognitionConfidence"></span>%</p>
+                            </div>
+                        </div>
+                        <div id="recognitionError" style="display: none;">
+                            <div class="alert alert-danger">
+                                <h4 class="alert-heading">Recognition Failed</h4>
+                                <p id="errorMessage">No face detected or the person is not in the database.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const capturedImage = document.getElementById('capturedImage');
+            const captureBtn = document.getElementById('captureBtn');
+            const retakeBtn = document.getElementById('retakeBtn');
+            const recognizeBtn = document.getElementById('recognizeBtn');
+            const cameraContainer = document.getElementById('cameraContainer');
+            const capturedImageContainer = document.getElementById('capturedImageContainer');
+            
+            // Results elements
+            const loadingResults = document.getElementById('loadingResults');
+            const noResults = document.getElementById('noResults');
+            const recognitionResults = document.getElementById('recognitionResults');
+            const recognitionError = document.getElementById('recognitionError');
+            const recognizedName = document.getElementById('recognizedName');
+            const recognizedEmail = document.getElementById('recognizedEmail');
+            const recognitionConfidence = document.getElementById('recognitionConfidence');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            let stream;
+            let imageData;
+            
+            // Start the camera
+            async function startCamera() {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                } catch (err) {
+                    console.error('Error accessing camera:', err);
+                    alert('Error accessing camera. Please make sure your camera is connected and permissions are granted.');
+                }
+            }
+            
+            // Start camera when page loads
+            startCamera();
+            
+            // Capture image
+            captureBtn.addEventListener('click', function() {
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Convert canvas to data URL
+                imageData = canvas.toDataURL('image/jpeg');
+                capturedImage.src = imageData;
+                
+                // Show captured image and hide video
+                cameraContainer.style.display = 'none';
+                capturedImageContainer.style.display = 'block';
+                
+                // Enable recognize button
+                recognizeBtn.disabled = false;
+                
+                // Stop the camera stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            });
+            
+            // Retake photo
+            retakeBtn.addEventListener('click', function() {
+                // Hide captured image and show video
+                cameraContainer.style.display = 'block';
+                capturedImageContainer.style.display = 'none';
+                
+                // Disable recognize button
+                recognizeBtn.disabled = true;
+                
+                // Reset results
+                noResults.style.display = 'block';
+                recognitionResults.style.display = 'none';
+                recognitionError.style.display = 'none';
+                
+                // Restart camera
+                startCamera();
+            });
+            
+            // Recognize face
+            recognizeBtn.addEventListener('click', function() {
+                // Show loading
+                loadingResults.style.display = 'block';
+                noResults.style.display = 'none';
+                recognitionResults.style.display = 'none';
+                recognitionError.style.display = 'none';
+                
+                // Send image to server for recognition
+                fetch('{{ url_for("recognize") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'image_data=' + encodeURIComponent(imageData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading
+                    loadingResults.style.display = 'none';
+                    
+                    if (data.status === 'success') {
+                        // Show results
+                        recognitionResults.style.display = 'block';
+                        recognizedName.textContent = data.name;
+                        recognizedEmail.textContent = data.email;
+                        recognitionConfidence.textContent = (data.confidence * 100).toFixed(2);
+                    } else {
+                        // Show error
+                        recognitionError.style.display = 'block';
+                        errorMessage.textContent = data.message;
+                    }
+                })
+                .catch(error => {
+                    // Hide loading
+                    loadingResults.style.display = 'none';
+                    
+                    // Show error
+                    recognitionError.style.display = 'block';
+                    errorMessage.textContent = 'An error occurred during recognition: ' + error.message;
+                });
+            });
+        });
+    </script>
+</body>
+</html>
